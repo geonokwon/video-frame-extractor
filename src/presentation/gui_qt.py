@@ -65,11 +65,13 @@ class SaveSelectedFramesThread(QThread):
     save_completed = Signal(int)  # 저장된 프레임 수
     save_failed = Signal(str)
     
-    def __init__(self, frames: List[VideoFrame], output_dir: Path, image_format: str):
+    def __init__(self, frames: List[VideoFrame], output_dir: Path, image_format: str, quality_level: int = 1, video_name: str = "video"):
         super().__init__()
         self.frames = frames
         self.output_dir = output_dir
         self.image_format = image_format
+        self.quality_level = quality_level  # 0: 최고, 1: 고품질, 2: 중간, 3: 낮음
+        self.video_name = video_name  # 영상 파일명 (확장자 제외)
         
     def run(self):
         """스레드 실행"""
@@ -77,20 +79,39 @@ class SaveSelectedFramesThread(QThread):
             saved_count = 0
             total = len(self.frames)
             
-            # PDF인 경우: 모든 선택된 프레임을 하나의 PDF로 결합
+            # PDF인 경우: 가로 5장씩 그리드 형태로 배치
             if self.image_format.lower() == 'pdf':
                 from PIL import Image
-                import tempfile
+                import math
+                
+                # 품질 레벨에 따른 설정
+                quality_settings = {
+                    0: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 95},  # 최고
+                    1: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 90},  # 고품질 (권장)
+                    2: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 85},  # 중간
+                    3: {"dpi": 100, "width": 827, "height": 1169, "jpeg_quality": 75},   # 낮음
+                }
+                
+                settings = quality_settings.get(self.quality_level, quality_settings[1])
+                PDF_WIDTH = settings["width"]
+                PDF_HEIGHT = settings["height"]
+                PDF_DPI = settings["dpi"]
+                JPEG_QUALITY = settings["jpeg_quality"]
+                
+                # 그리드 설정
+                COLUMNS = 5  # 가로 5장
+                PAGE_MARGIN = int(60 * (PDF_WIDTH / 2480))  # 해상도에 비례
+                CELL_SPACING = int(30 * (PDF_WIDTH / 2480))  # 해상도에 비례
                 
                 # 임시 이미지 리스트
                 temp_images = []
-                pil_images = []
+                frame_images = []
                 
                 # 선택된 프레임만 추출
                 selected_frames = [f for f in self.frames if f.selected]
                 
+                # 각 프레임 이미지 생성 (캡션 포함)
                 for i, frame in enumerate(selected_frames):
-                    # 선택된 순서로 번호 매기기 (1부터 시작)
                     sequence_number = i + 1
                     
                     # 타임스탬프 포맷팅
@@ -104,38 +125,93 @@ class SaveSelectedFramesThread(QThread):
                         frame.image_path,
                         temp_path,
                         caption=frame.caption,
-                        frame_number=sequence_number,  # 선택 순서로 변경
+                        frame_number=sequence_number,
                         timestamp=timestamp_str,
                         position='bottom'
                     )
                     
-                    # PIL 이미지로 로드
+                    # PIL 이미지로 로드 및 RGB 변환
                     img = Image.open(temp_path)
-                    # RGB 모드로 변환 (PDF는 RGBA 지원 안 함)
                     if img.mode == 'RGBA':
                         rgb_img = Image.new('RGB', img.size, (255, 255, 255))
                         rgb_img.paste(img, mask=img.split()[3] if len(img.split()) == 4 else None)
-                        pil_images.append(rgb_img)
+                        frame_images.append(rgb_img)
                     else:
-                        pil_images.append(img.convert('RGB'))
+                        frame_images.append(img.convert('RGB'))
                     
                     temp_images.append(temp_path)
                     saved_count += 1
                     
-                    # 진행률 업데이트
-                    progress = int((i + 1) / total * 90)  # 90%까지만
+                    progress = int((i + 1) / len(selected_frames) * 70)
                     self.progress_updated.emit(progress)
                 
-                # PDF 생성
-                if pil_images:
-                    pdf_path = self.output_dir / "frames_combined.pdf"
-                    pil_images[0].save(
-                        pdf_path,
-                        save_all=True,
-                        append_images=pil_images[1:] if len(pil_images) > 1 else [],
-                        resolution=100.0,
-                        quality=95
-                    )
+                # 그리드 PDF 생성
+                if frame_images:
+                    # 셀 크기 계산
+                    available_width = PDF_WIDTH - (2 * PAGE_MARGIN) - ((COLUMNS - 1) * CELL_SPACING)
+                    cell_width = available_width // COLUMNS
+                    
+                    # 셀 높이 계산 (이미지 비율 기반)
+                    avg_aspect_ratio = sum(img.height / img.width for img in frame_images) / len(frame_images)
+                    cell_height = int(cell_width * avg_aspect_ratio)
+                    
+                    # 한 페이지에 들어갈 행 수 계산
+                    available_height = PDF_HEIGHT - (2 * PAGE_MARGIN)
+                    rows_per_page = max(1, (available_height + CELL_SPACING) // (cell_height + CELL_SPACING))
+                    
+                    images_per_page = COLUMNS * rows_per_page
+                    total_pages = math.ceil(len(frame_images) / images_per_page)
+                    
+                    pdf_pages = []
+                    
+                    # 페이지별로 이미지 배치
+                    for page_num in range(total_pages):
+                        start_idx = page_num * images_per_page
+                        end_idx = min(start_idx + images_per_page, len(frame_images))
+                        page_images = frame_images[start_idx:end_idx]
+                        
+                        # 실제 필요한 행 수 계산
+                        actual_rows = math.ceil(len(page_images) / COLUMNS)
+                        
+                        # 실제 페이지 높이 계산 (이미지가 끝나는 지점까지만)
+                        actual_height = PAGE_MARGIN + (actual_rows * cell_height) + ((actual_rows - 1) * CELL_SPACING) + PAGE_MARGIN
+                        
+                        # 새 페이지 생성 (실제 높이로)
+                        page = Image.new('RGB', (PDF_WIDTH, actual_height), 'white')
+                        
+                        # 그리드에 이미지 배치
+                        for idx, img in enumerate(page_images):
+                            row = idx // COLUMNS
+                            col = idx % COLUMNS
+                            
+                            # 이미지 리사이즈 (비율 유지)
+                            img_resized = img.copy()
+                            img_resized.thumbnail((cell_width, cell_height), Image.Resampling.LANCZOS)
+                            
+                            # 배치 위치 계산
+                            x = PAGE_MARGIN + col * (cell_width + CELL_SPACING)
+                            y = PAGE_MARGIN + row * (cell_height + CELL_SPACING)
+                            
+                            # 셀 내에서 중앙 정렬
+                            x_offset = (cell_width - img_resized.width) // 2
+                            y_offset = (cell_height - img_resized.height) // 2
+                            page.paste(img_resized, (x + x_offset, y + y_offset))
+                        
+                        pdf_pages.append(page)
+                        
+                        progress = 70 + int((page_num + 1) / total_pages * 20)
+                        self.progress_updated.emit(progress)
+                    
+                    # PDF 저장 (품질 설정 적용, 파일명은 영상명)
+                    pdf_path = self.output_dir / f"{self.video_name}.pdf"
+                    if pdf_pages:
+                        pdf_pages[0].save(
+                            pdf_path,
+                            save_all=True,
+                            append_images=pdf_pages[1:] if len(pdf_pages) > 1 else [],
+                            resolution=float(PDF_DPI),
+                            quality=JPEG_QUALITY
+                        )
                     
                     # 임시 파일 삭제
                     for temp_path in temp_images:
@@ -146,13 +222,38 @@ class SaveSelectedFramesThread(QThread):
                 
                 self.save_completed.emit(saved_count)
             
-            # 일반 이미지 포맷인 경우
+            # 일반 이미지 포맷인 경우 (PNG, JPG) - PDF처럼 그리드로 저장
             else:
+                from PIL import Image
+                import math
+                
+                # 품질 레벨에 따른 설정
+                quality_settings = {
+                    0: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 95},
+                    1: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 90},
+                    2: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 85},
+                    3: {"dpi": 100, "width": 827, "height": 1169, "jpeg_quality": 75},
+                }
+                
+                settings = quality_settings.get(self.quality_level, quality_settings[1])
+                IMG_WIDTH = settings["width"]
+                IMG_HEIGHT = settings["height"]
+                JPEG_QUALITY = settings["jpeg_quality"]
+                
+                # 그리드 설정
+                COLUMNS = 5
+                PAGE_MARGIN = int(60 * (IMG_WIDTH / 2480))
+                CELL_SPACING = int(30 * (IMG_WIDTH / 2480))
+                
+                # 임시 이미지 리스트
+                temp_images = []
+                frame_images = []
+                
                 # 선택된 프레임만 추출
                 selected_frames = [f for f in self.frames if f.selected]
                 
+                # 각 프레임 이미지 생성 (캡션 포함)
                 for i, frame in enumerate(selected_frames):
-                    # 선택된 순서로 번호 매기기 (1부터 시작)
                     sequence_number = i + 1
                     
                     # 타임스탬프 포맷팅
@@ -160,27 +261,94 @@ class SaveSelectedFramesThread(QThread):
                     seconds = frame.timestamp % 60
                     timestamp_str = f"{minutes:02d}:{seconds:05.2f}"
                     
-                    # 파일명 결정 (선택 순서로)
-                    if frame.caption:
-                        output_path = self.output_dir / f"frame_{sequence_number:04d}_description.{self.image_format}"
-                    else:
-                        output_path = self.output_dir / f"frame_{sequence_number:04d}.{self.image_format}"
-                    
-                    # 이미지에 프레임 정보 추가 (선택 순서로 번호 매김)
+                    # 임시 이미지 생성
+                    temp_path = self.output_dir / f"temp_frame_{sequence_number:04d}.png"
                     add_caption_to_image(
                         frame.image_path,
-                        output_path,
+                        temp_path,
                         caption=frame.caption,
-                        frame_number=sequence_number,  # 선택 순서로 변경
+                        frame_number=sequence_number,
                         timestamp=timestamp_str,
                         position='bottom'
                     )
                     
+                    # PIL 이미지로 로드
+                    img = Image.open(temp_path)
+                    if img.mode == 'RGBA':
+                        rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                        rgb_img.paste(img, mask=img.split()[3] if len(img.split()) == 4 else None)
+                        frame_images.append(rgb_img)
+                    else:
+                        frame_images.append(img.convert('RGB'))
+                    
+                    temp_images.append(temp_path)
                     saved_count += 1
                     
-                    # 진행률 업데이트
-                    progress = int((i + 1) / len(selected_frames) * 100)
+                    progress = int((i + 1) / len(selected_frames) * 70)
                     self.progress_updated.emit(progress)
+                
+                # 그리드 이미지 생성
+                if frame_images:
+                    # 셀 크기 계산
+                    available_width = IMG_WIDTH - (2 * PAGE_MARGIN) - ((COLUMNS - 1) * CELL_SPACING)
+                    cell_width = available_width // COLUMNS
+                    
+                    avg_aspect_ratio = sum(img.height / img.width for img in frame_images) / len(frame_images)
+                    cell_height = int(cell_width * avg_aspect_ratio)
+                    
+                    available_height = IMG_HEIGHT - (2 * PAGE_MARGIN)
+                    rows_per_page = max(1, (available_height + CELL_SPACING) // (cell_height + CELL_SPACING))
+                    
+                    images_per_page = COLUMNS * rows_per_page
+                    total_pages = math.ceil(len(frame_images) / images_per_page)
+                    
+                    # 페이지별로 이미지 생성
+                    for page_num in range(total_pages):
+                        start_idx = page_num * images_per_page
+                        end_idx = min(start_idx + images_per_page, len(frame_images))
+                        page_images = frame_images[start_idx:end_idx]
+                        
+                        # 실제 필요한 행 수 계산
+                        actual_rows = math.ceil(len(page_images) / COLUMNS)
+                        
+                        # 실제 페이지 높이 계산 (이미지가 끝나는 지점까지만)
+                        actual_height = PAGE_MARGIN + (actual_rows * cell_height) + ((actual_rows - 1) * CELL_SPACING) + PAGE_MARGIN
+                        
+                        # 새 페이지 생성 (실제 높이로)
+                        page = Image.new('RGB', (IMG_WIDTH, actual_height), 'white')
+                        
+                        # 그리드에 이미지 배치
+                        for idx, img in enumerate(page_images):
+                            row = idx // COLUMNS
+                            col = idx % COLUMNS
+                            
+                            img_resized = img.copy()
+                            img_resized.thumbnail((cell_width, cell_height), Image.Resampling.LANCZOS)
+                            
+                            x = PAGE_MARGIN + col * (cell_width + CELL_SPACING)
+                            y = PAGE_MARGIN + row * (cell_height + CELL_SPACING)
+                            
+                            x_offset = (cell_width - img_resized.width) // 2
+                            y_offset = (cell_height - img_resized.height) // 2
+                            page.paste(img_resized, (x + x_offset, y + y_offset))
+                        
+                        # 페이지 저장
+                        if total_pages == 1:
+                            output_path = self.output_dir / f"{self.video_name}.{self.image_format}"
+                        else:
+                            output_path = self.output_dir / f"{self.video_name}_page{page_num + 1:02d}.{self.image_format}"
+                        
+                        page.save(output_path, quality=JPEG_QUALITY, optimize=True)
+                        
+                        progress = 70 + int((page_num + 1) / total_pages * 20)
+                        self.progress_updated.emit(progress)
+                    
+                    # 임시 파일 삭제
+                    for temp_path in temp_images:
+                        if temp_path.exists():
+                            temp_path.unlink()
+                    
+                    self.progress_updated.emit(100)
                 
                 self.save_completed.emit(saved_count)
             
@@ -432,13 +600,37 @@ class VideoFrameExtractorQt(QMainWindow):
         interval_layout.addStretch()
         layout.addLayout(interval_layout)
         
-        # 출력 포맷 안내
-        format_info_layout = QHBoxLayout()
-        format_info_label = QLabel("📄 출력 포맷: PDF (모든 선택된 프레임을 하나의 PDF로 통합)")
-        format_info_label.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
-        format_info_layout.addWidget(format_info_label)
-        format_info_layout.addStretch()
-        layout.addLayout(format_info_layout)
+        # 출력 형식 선택
+        format_layout = QHBoxLayout()
+        format_label = QLabel("출력 형식:")
+        format_label.setMinimumWidth(120)
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["PDF", "PNG", "JPG"])
+        self.format_combo.setCurrentIndex(0)  # PDF 기본
+        format_info = QLabel("(모든 형식 가로 5장씩 그리드 배치)")
+        format_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
+        
+        format_layout.addWidget(format_label)
+        format_layout.addWidget(self.format_combo)
+        format_layout.addWidget(format_info)
+        format_layout.addStretch()
+        layout.addLayout(format_layout)
+        
+        # 품질 설정
+        quality_layout = QHBoxLayout()
+        quality_label = QLabel("품질:")
+        quality_label.setMinimumWidth(120)
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(["최고 품질 (대용량)", "고품질 (권장)", "중간 품질", "낮은 품질 (소용량)"])
+        self.quality_combo.setCurrentIndex(1)  # 고품질 기본
+        quality_info = QLabel("(품질이 높을수록 파일 크기 증가)")
+        quality_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
+        
+        quality_layout.addWidget(quality_label)
+        quality_layout.addWidget(self.quality_combo)
+        quality_layout.addWidget(quality_info)
+        quality_layout.addStretch()
+        layout.addLayout(quality_layout)
         
         group.setLayout(layout)
         return group
@@ -636,11 +828,16 @@ class VideoFrameExtractorQt(QMainWindow):
         self.save_progress_bar.setVisible(True)
         self._update_status(f"선택한 {len(selected)}개 프레임 저장 중...")
         
-        # 저장 스레드 시작 (PDF로 고정)
+        # 저장 스레드 시작 (품질 설정 포함)
+        quality_level = self.quality_combo.currentIndex()  # 0: 최고, 1: 고품질, 2: 중간, 3: 낮음
+        output_format = self.format_combo.currentText().lower()  # pdf, png, jpg
+        video_name = self.video_path.stem if hasattr(self, 'video_path') and self.video_path else "video"
         self.save_thread = SaveSelectedFramesThread(
             self.extracted_frames,
             self.output_dir,
-            "pdf"  # PDF로 고정
+            output_format,
+            quality_level,
+            video_name
         )
         self.save_thread.progress_updated.connect(self._on_save_progress_updated)
         self.save_thread.save_completed.connect(self._on_save_completed)

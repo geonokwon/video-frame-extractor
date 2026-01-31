@@ -14,11 +14,11 @@ def add_caption_to_image(
     frame_number: int = 0,
     timestamp: str = "",
     position: str = 'bottom',
-    font_size: int = 24,
-    padding: int = 20,
+    font_size: int = 72,  # 48 -> 72 (더 크게!)
+    padding: int = 20,  # 30 -> 20 (여백 줄임)
     background_color: str = 'white',
     text_color: str = 'black',
-    border_width: int = 3,
+    border_width: int = 6,  # 5 -> 6 (더 두꺼운 테두리)
     border_color: str = 'black'
 ) -> Path:
     """
@@ -61,7 +61,7 @@ def add_caption_to_image(
         for font_path in font_paths:
             if os.path.exists(font_path):
                 font = ImageFont.truetype(font_path, font_size)
-                header_font = ImageFont.truetype(font_path, 20)  # 헤더용 작은 폰트
+                header_font = ImageFont.truetype(font_path, int(font_size * 0.7))  # 헤더 폰트도 크게 (72의 70% = 50)
                 break
         if font is None:
             font = ImageFont.load_default()
@@ -71,8 +71,8 @@ def add_caption_to_image(
         font = ImageFont.load_default()
         header_font = ImageFont.load_default()
     
-    # 상단 정보 바 높이
-    header_height = 50
+    # 상단 정보 바 높이 (폰트 크기에 비례, 여백 최소화)
+    header_height = int(font_size * 1.3)  # 폰트가 72일 때 약 94px (여백 최소화)
     
     # 캡션 텍스트 처리
     caption_height = 0
@@ -101,8 +101,8 @@ def add_caption_to_image(
         if current_line:
             lines.append(' '.join(current_line))
         
-        # 전체 텍스트 높이 계산
-        line_height = font_size + 8
+        # 전체 텍스트 높이 계산 (폰트 크기에 비례)
+        line_height = int(font_size * 1.5)  # (font_size + 8) -> font_size * 1.5
         caption_height = len(lines) * line_height + 2 * padding
     
     # 새 이미지 생성 (헤더 + 원본 + 캡션 + 테두리)
@@ -119,16 +119,18 @@ def add_caption_to_image(
         fill=background_color
     )
     
-    # 프레임 번호 (왼쪽)
+    # 프레임 번호 (왼쪽) - 상단에 최대한 가깝게
     frame_text = f"#{frame_number}"
-    draw.text((border_width + 15, border_width + 15), frame_text, fill=text_color, font=header_font)
+    text_y_pos = border_width + int(padding * 0.3)  # 여백 더 줄임
+    text_x_padding = int(padding * 0.4)
+    draw.text((border_width + text_x_padding, text_y_pos), frame_text, fill=text_color, font=header_font)
     
-    # 타임스탬프 (오른쪽)
+    # 타임스탬프 (오른쪽) - 상단에 최대한 가깝게
     if timestamp:
         bbox = draw.textbbox((0, 0), timestamp, font=header_font)
         timestamp_width = bbox[2] - bbox[0]
         draw.text(
-            (total_width - border_width - timestamp_width - 15, border_width + 15),
+            (total_width - border_width - timestamp_width - text_x_padding, text_y_pos),
             timestamp,
             fill=text_color,
             font=header_font
