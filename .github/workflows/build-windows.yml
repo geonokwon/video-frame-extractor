@@ -1,0 +1,50 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Download FFmpeg
+      run: python scripts/download_ffmpeg.py
+    
+    - name: Build Windows executable
+      run: python scripts/build_windows.py
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-executable
+        path: dist/영상프레임추출기.exe
+    
+    # Inno Setup 사용 (선택사항)
+    # - name: Build installer
+    #   run: |
+    #     choco install innosetup -y
+    #     python scripts/build_windows_installer.py
+    # 
+    # - name: Upload installer
+    #   uses: actions/upload-artifact@v3
+    #   with:
+    #     name: windows-installer
+    #     path: scripts/installer_output/*.exe
