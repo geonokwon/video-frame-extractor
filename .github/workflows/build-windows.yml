@@ -35,21 +35,12 @@ jobs:
       run: |
         echo "=== Checking dist folder ==="
         dir dist
-        if (Test-Path "dist\VideoFrameExtractor") {
-          echo "=== VideoFrameExtractor folder exists ==="
-          dir "dist\VideoFrameExtractor"
-        }
-        if (Test-Path "dist\VideoFrameExtractor.exe") {
-          echo "=== VideoFrameExtractor.exe found ==="
-        }
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: windows-executable
-        path: |
-          dist/VideoFrameExtractor.exe
-          dist/VideoFrameExtractor/VideoFrameExtractor.exe
+        path: dist/VideoFrameExtractor.exe
     
     # Inno Setup 사용 (선택사항)
     # - name: Build installer

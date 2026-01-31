@@ -66,20 +66,34 @@ def build_standalone():
     ffprobe_binary = str(ffmpeg_dir / f"ffprobe{exe_ext}")
     
     # PyInstaller 명령 구성
-    # macOS .app 번들에서는 --onedir 사용 (--onefile과 충돌)
     cmd = [
         "pyinstaller",
         "--name", APP_NAME,
-        "--windowed",  # GUI 모드 (.app 생성)
-        "--onedir",    # 폴더 모드 (macOS .app 번들용)
+        "--windowed",  # GUI 모드
         "--clean",     # 빌드 전 정리
         "--noconfirm", # 덮어쓰기 확인 안 함
-        
-        # FFmpeg 바이너리 포함 (bin 폴더에 넣어서 이름 충돌 방지)
-        "--add-binary", f"{ffmpeg_binary}:bin",
-        "--add-binary", f"{ffprobe_binary}:bin",
-        
-        # Hidden imports
+    ]
+    
+    # OS별 빌드 모드 설정
+    if system == "Windows":
+        # Windows: 단일 실행 파일 (배포 편리)
+        cmd.append("--onefile")
+        # DLL 누락 방지
+        cmd.extend(["--collect-all", "PySide6"])
+        cmd.extend(["--collect-all", "ffmpeg"])
+        cmd.append("--noupx")  # UPX 압축 비활성화 (DLL 문제 방지)
+        # FFmpeg 바이너리 포함 (Windows는 세미콜론)
+        cmd.extend(["--add-binary", f"{ffmpeg_binary};bin"])
+        cmd.extend(["--add-binary", f"{ffprobe_binary};bin"])
+    else:
+        # macOS/Linux: 폴더 모드 (.app 번들용)
+        cmd.append("--onedir")
+        # FFmpeg 바이너리 포함 (macOS/Linux는 콜론)
+        cmd.extend(["--add-binary", f"{ffmpeg_binary}:bin"])
+        cmd.extend(["--add-binary", f"{ffprobe_binary}:bin"])
+    
+    # Hidden imports (공통)
+    cmd.extend([
         "--hidden-import", "PySide6",
         "--hidden-import", "ffmpeg",
         "--hidden-import", "PIL",
@@ -88,15 +102,20 @@ def build_standalone():
         "--hidden-import", "src.domain.repositories",
         "--hidden-import", "src.infrastructure.ffmpeg_video_repository",
         "--hidden-import", "src.infrastructure.bundled_ffmpeg",
+        "--hidden-import", "src.infrastructure.image_caption",
         "--hidden-import", "src.presentation.gui_qt",
-        
-        # 데이터 파일 제외
+        "--hidden-import", "src.presentation.frame_preview_widget",
+        "--hidden-import", "src.presentation.themes",
+    ])
+    
+    # 불필요한 모듈 제외 (공통)
+    cmd.extend([
         "--exclude-module", "matplotlib",
         "--exclude-module", "numpy",
         "--exclude-module", "scipy",
-        
-        SCRIPT_NAME
-    ]
+    ])
+    
+    cmd.append(SCRIPT_NAME)
     
     # 아이콘 추가 (있는 경우)
     icon_path = Path("icon.icns" if system == "Darwin" else "icon.ico")
