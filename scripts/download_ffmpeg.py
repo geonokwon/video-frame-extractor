@@ -99,12 +99,13 @@ def download_ffmpeg_windows(ffmpeg_dir: Path, machine: str):
     zip_path.unlink()
     
     # bin 폴더에서 ffmpeg.exe, ffprobe.exe 찾아서 상위로 이동
-    for root, dirs, files in (ffmpeg_dir).rglob("*"):
-        if root.name == "bin":
+    for path in ffmpeg_dir.rglob("*"):
+        if path.is_dir() and path.name == "bin":
             for file in ["ffmpeg.exe", "ffprobe.exe"]:
-                src = root / file
+                src = path / file
                 if src.exists():
                     shutil.copy2(src, ffmpeg_dir / file)
+                    print(f"  - Copied {file}")
     
     # 압축 해제된 폴더 삭제
     for item in ffmpeg_dir.iterdir():
