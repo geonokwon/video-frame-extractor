@@ -22,30 +22,29 @@ class FramePreviewItem(QFrame):
     def __init__(self, frame: VideoFrame, parent=None):
         super().__init__(parent)
         self.frame = frame
+        self.setObjectName("FrameCard")
+        self.setCursor(Qt.PointingHandCursor)  # 클릭 가능 커서
         self._setup_ui()
         self._update_selection_style()
         
+    def mousePressEvent(self, event):
+        """카드 클릭 시 선택 토글"""
+        if event.button() == Qt.LeftButton:
+            self.frame.selected = not self.frame.selected
+            self._update_selection_style()
+            self.selection_changed.emit(self.frame.frame_number, self.frame.selected)
+        super().mousePressEvent(event)
+        
     def _setup_ui(self):
         """UI 구성"""
-        # 카드 스타일 설정
-        self.setObjectName("FrameCard")
-        self.setStyleSheet("")  # 초기화
-        
         # 메인 레이아웃 (세로)
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(15, 15, 15, 15)
         
-        # 상단: 체크박스 + 프레임명 - 타임스탬프
+        # 상단: 프레임명 - 타임스탬프
         header_layout = QHBoxLayout()
         header_layout.setSpacing(10)
-        
-        # 체크박스 (왼쪽)
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.frame.selected)
-        self.checkbox.stateChanged.connect(self._on_selection_changed)
-        self.checkbox.setFixedSize(30, 30)
-        header_layout.addWidget(self.checkbox, alignment=Qt.AlignCenter)
         
         # 프레임명
         frame_name_label = QLabel(f"프레임 {self.frame.frame_number}")
@@ -197,15 +196,6 @@ class FramePreviewItem(QFrame):
         secs = seconds % 60
         return f"{minutes:02d}:{secs:05.2f}"
         
-    def _on_selection_changed(self, state):
-        """선택 상태 변경"""
-        print(f"[DEBUG] 프레임 {self.frame.frame_number} state 값: {state}, Qt.Checked={Qt.Checked}, Qt.Unchecked={Qt.Unchecked}")
-        selected = (state == Qt.Checked.value) or (state == Qt.CheckState.Checked.value) or (state == 2)
-        self.frame.selected = selected
-        print(f"[DEBUG] 프레임 {self.frame.frame_number} 선택 변경: {selected}")
-        self._update_selection_style()  # 스타일 업데이트
-        self.selection_changed.emit(self.frame.frame_number, selected)
-        
     def _on_caption_changed(self):
         """장면설명 변경"""
         text = self.caption_input.toPlainText()
@@ -289,14 +279,14 @@ class FramePreviewWidget(QWidget):
         """전체 선택"""
         for frame in self.frames:
             frame.selected = True
-        # UI 아이템 직접 업데이트 (그리드 재생성 안 함)
-        for frame_num, item in self.preview_items.items():
-            item.checkbox.setChecked(True)
+        # UI 아이템 스타일 업데이트
+        for item in self.preview_items.values():
+            item._update_selection_style()
         
     def deselect_all(self):
         """전체 선택 해제"""
         for frame in self.frames:
             frame.selected = False
-        # UI 아이템 직접 업데이트 (그리드 재생성 안 함)
-        for frame_num, item in self.preview_items.items():
-            item.checkbox.setChecked(False)
+        # UI 아이템 스타일 업데이트
+        for item in self.preview_items.values():
+            item._update_selection_style()

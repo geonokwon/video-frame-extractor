@@ -70,7 +70,6 @@ def build_standalone():
         "pyinstaller",
         "--name", APP_NAME,
         "--windowed",  # GUI 모드
-        "--clean",     # 빌드 전 정리
         "--noconfirm", # 덮어쓰기 확인 안 함
     ]
     

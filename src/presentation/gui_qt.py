@@ -86,36 +86,41 @@ class SaveSelectedFramesThread(QThread):
                 temp_images = []
                 pil_images = []
                 
-                for i, frame in enumerate(self.frames):
-                    if frame.selected:
-                        # 타임스탬프 포맷팅
-                        minutes = int(frame.timestamp // 60)
-                        seconds = frame.timestamp % 60
-                        timestamp_str = f"{minutes:02d}:{seconds:05.2f}"
-                        
-                        # 임시 이미지 생성
-                        temp_path = self.output_dir / f"temp_frame_{frame.frame_number:04d}.png"
-                        add_caption_to_image(
-                            frame.image_path,
-                            temp_path,
-                            caption=frame.caption,
-                            frame_number=frame.frame_number,
-                            timestamp=timestamp_str,
-                            position='bottom'
-                        )
-                        
-                        # PIL 이미지로 로드
-                        img = Image.open(temp_path)
-                        # RGB 모드로 변환 (PDF는 RGBA 지원 안 함)
-                        if img.mode == 'RGBA':
-                            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                            rgb_img.paste(img, mask=img.split()[3] if len(img.split()) == 4 else None)
-                            pil_images.append(rgb_img)
-                        else:
-                            pil_images.append(img.convert('RGB'))
-                        
-                        temp_images.append(temp_path)
-                        saved_count += 1
+                # 선택된 프레임만 추출
+                selected_frames = [f for f in self.frames if f.selected]
+                
+                for i, frame in enumerate(selected_frames):
+                    # 선택된 순서로 번호 매기기 (1부터 시작)
+                    sequence_number = i + 1
+                    
+                    # 타임스탬프 포맷팅
+                    minutes = int(frame.timestamp // 60)
+                    seconds = frame.timestamp % 60
+                    timestamp_str = f"{minutes:02d}:{seconds:05.2f}"
+                    
+                    # 임시 이미지 생성
+                    temp_path = self.output_dir / f"temp_frame_{sequence_number:04d}.png"
+                    add_caption_to_image(
+                        frame.image_path,
+                        temp_path,
+                        caption=frame.caption,
+                        frame_number=sequence_number,  # 선택 순서로 변경
+                        timestamp=timestamp_str,
+                        position='bottom'
+                    )
+                    
+                    # PIL 이미지로 로드
+                    img = Image.open(temp_path)
+                    # RGB 모드로 변환 (PDF는 RGBA 지원 안 함)
+                    if img.mode == 'RGBA':
+                        rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                        rgb_img.paste(img, mask=img.split()[3] if len(img.split()) == 4 else None)
+                        pil_images.append(rgb_img)
+                    else:
+                        pil_images.append(img.convert('RGB'))
+                    
+                    temp_images.append(temp_path)
+                    saved_count += 1
                     
                     # 진행률 업데이트
                     progress = int((i + 1) / total * 90)  # 90%까지만
@@ -143,33 +148,38 @@ class SaveSelectedFramesThread(QThread):
             
             # 일반 이미지 포맷인 경우
             else:
-                for i, frame in enumerate(self.frames):
-                    if frame.selected:
-                        # 타임스탬프 포맷팅
-                        minutes = int(frame.timestamp // 60)
-                        seconds = frame.timestamp % 60
-                        timestamp_str = f"{minutes:02d}:{seconds:05.2f}"
-                        
-                        # 파일명 결정
-                        if frame.caption:
-                            output_path = self.output_dir / f"frame_{frame.frame_number:04d}_description.{self.image_format}"
-                        else:
-                            output_path = self.output_dir / f"frame_{frame.frame_number:04d}.{self.image_format}"
-                        
-                        # 이미지에 프레임 정보 추가 (캡션 유무와 관계없이)
-                        add_caption_to_image(
-                            frame.image_path,
-                            output_path,
-                            caption=frame.caption,
-                            frame_number=frame.frame_number,
-                            timestamp=timestamp_str,
-                            position='bottom'
-                        )
-                        
-                        saved_count += 1
+                # 선택된 프레임만 추출
+                selected_frames = [f for f in self.frames if f.selected]
+                
+                for i, frame in enumerate(selected_frames):
+                    # 선택된 순서로 번호 매기기 (1부터 시작)
+                    sequence_number = i + 1
+                    
+                    # 타임스탬프 포맷팅
+                    minutes = int(frame.timestamp // 60)
+                    seconds = frame.timestamp % 60
+                    timestamp_str = f"{minutes:02d}:{seconds:05.2f}"
+                    
+                    # 파일명 결정 (선택 순서로)
+                    if frame.caption:
+                        output_path = self.output_dir / f"frame_{sequence_number:04d}_description.{self.image_format}"
+                    else:
+                        output_path = self.output_dir / f"frame_{sequence_number:04d}.{self.image_format}"
+                    
+                    # 이미지에 프레임 정보 추가 (선택 순서로 번호 매김)
+                    add_caption_to_image(
+                        frame.image_path,
+                        output_path,
+                        caption=frame.caption,
+                        frame_number=sequence_number,  # 선택 순서로 변경
+                        timestamp=timestamp_str,
+                        position='bottom'
+                    )
+                    
+                    saved_count += 1
                     
                     # 진행률 업데이트
-                    progress = int((i + 1) / total * 100)
+                    progress = int((i + 1) / len(selected_frames) * 100)
                     self.progress_updated.emit(progress)
                 
                 self.save_completed.emit(saved_count)
@@ -422,21 +432,13 @@ class VideoFrameExtractorQt(QMainWindow):
         interval_layout.addStretch()
         layout.addLayout(interval_layout)
         
-        # 이미지 포맷
-        format_layout = QHBoxLayout()
-        format_label = QLabel("출력 포맷:")
-        format_label.setMinimumWidth(120)
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["png", "jpg", "jpeg", "pdf"])
-        self.format_combo.setCurrentText("png")
-        format_info = QLabel("(PNG: 고품질, JPG: 압축, PDF: 하나의 문서로 통합)")
-        format_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
-        
-        format_layout.addWidget(format_label)
-        format_layout.addWidget(self.format_combo)
-        format_layout.addWidget(format_info)
-        format_layout.addStretch()
-        layout.addLayout(format_layout)
+        # 출력 포맷 안내
+        format_info_layout = QHBoxLayout()
+        format_info_label = QLabel("📄 출력 포맷: PDF (모든 선택된 프레임을 하나의 PDF로 통합)")
+        format_info_label.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
+        format_info_layout.addWidget(format_info_label)
+        format_info_layout.addStretch()
+        layout.addLayout(format_info_layout)
         
         group.setLayout(layout)
         return group
@@ -536,7 +538,7 @@ class VideoFrameExtractorQt(QMainWindow):
             config = ExtractionConfig(
                 interval=self.interval_spinbox.value(),
                 output_dir=self.temp_output_dir,
-                image_format=self.format_combo.currentText(),
+                image_format="pdf",  # PDF로 고정
                 image_quality=95
             )
             
@@ -634,11 +636,11 @@ class VideoFrameExtractorQt(QMainWindow):
         self.save_progress_bar.setVisible(True)
         self._update_status(f"선택한 {len(selected)}개 프레임 저장 중...")
         
-        # 저장 스레드 시작
+        # 저장 스레드 시작 (PDF로 고정)
         self.save_thread = SaveSelectedFramesThread(
             self.extracted_frames,
             self.output_dir,
-            self.format_combo.currentText()
+            "pdf"  # PDF로 고정
         )
         self.save_thread.progress_updated.connect(self._on_save_progress_updated)
         self.save_thread.save_completed.connect(self._on_save_completed)
