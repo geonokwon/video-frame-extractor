@@ -14,11 +14,11 @@ def add_caption_to_image(
     frame_number: int = 0,
     timestamp: str = "",
     position: str = 'bottom',
-    font_size: int = 72,  # 48 -> 72 (더 크게!)
-    padding: int = 20,  # 30 -> 20 (여백 줄임)
+    font_size: int = 60,  # 70 -> 60 (더 작게)
+    padding: int = 18,  # 22 -> 18 (여백 줄임)
     background_color: str = 'white',
     text_color: str = 'black',
-    border_width: int = 6,  # 5 -> 6 (더 두꺼운 테두리)
+    border_width: int = 6,  # 8 -> 6 (테두리 줄임)
     border_color: str = 'black'
 ) -> Path:
     """
@@ -49,19 +49,31 @@ def add_caption_to_image(
     # 폰트 설정 (UTF-8 지원: 한글, 영어, 일본어, 중국어 등)
     font = None
     header_font = None
-    font_paths = [
-        # macOS 한글/일본어/영어 지원 폰트 (우선순위)
-        '/System/Library/Fonts/AppleSDGothicNeo.ttc',  # 한글 + 영어 + 일본어
-        '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',  # 유니코드 전체
-        '/System/Library/Fonts/Hiragino Sans GB.ttc',  # 중국어 + 일본어
-        '/System/Library/Fonts/Supplemental/Arial.ttf',  # 영어
-    ]
+    
+    # OS별 폰트 경로
+    import platform
+    system = platform.system()
+    
+    if system == "Windows":
+        font_paths = [
+            'C:/Windows/Fonts/malgun.ttf',  # 맑은 고딕 (한글)
+            'C:/Windows/Fonts/gulim.ttc',   # 굴림 (한글)
+            'C:/Windows/Fonts/batang.ttc',  # 바탕 (한글)
+            'C:/Windows/Fonts/arial.ttf',   # Arial (영어)
+        ]
+    else:  # macOS
+        font_paths = [
+            '/System/Library/Fonts/AppleSDGothicNeo.ttc',  # 한글 + 영어 + 일본어
+            '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',  # 유니코드 전체
+            '/System/Library/Fonts/Hiragino Sans GB.ttc',  # 중국어 + 일본어
+            '/System/Library/Fonts/Supplemental/Arial.ttf',  # 영어
+        ]
     
     try:
         for font_path in font_paths:
             if os.path.exists(font_path):
                 font = ImageFont.truetype(font_path, font_size)
-                header_font = ImageFont.truetype(font_path, int(font_size * 0.7))  # 헤더 폰트도 크게 (72의 70% = 50)
+                header_font = ImageFont.truetype(font_path, int(font_size * 0.75))  # 헤더 폰트 (60의 75% = 45)
                 break
         if font is None:
             font = ImageFont.load_default()
@@ -82,28 +94,38 @@ def add_caption_to_image(
         # 임시 드로잉으로 텍스트 크기 측정
         temp_draw = ImageDraw.Draw(Image.new('RGB', (1, 1)))
         
-        # 텍스트를 여러 줄로 분할 (너무 길면)
-        words = caption.split(' ')
-        current_line = []
+        # 줄바꿈 문자 먼저 처리
+        caption_lines = caption.split('\n')
         
-        for word in words:
-            test_line = ' '.join(current_line + [word])
-            bbox = temp_draw.textbbox((0, 0), test_line, font=font)
-            text_width = bbox[2] - bbox[0]
+        # 각 줄에 대해 너비가 넘으면 추가 분할
+        for line in caption_lines:
+            if not line.strip():
+                lines.append('')  # 빈 줄도 유지
+                continue
+                
+            words = line.split(' ')
+            current_line = []
             
-            if text_width <= img_width - 2 * padding:
-                current_line.append(word)
-            else:
-                if current_line:
-                    lines.append(' '.join(current_line))
-                current_line = [word]
+            for word in words:
+                test_line = ' '.join(current_line + [word])
+                bbox = temp_draw.textbbox((0, 0), test_line, font=font)
+                text_width = bbox[2] - bbox[0]
+                
+                if text_width <= img_width - 2 * padding:
+                    current_line.append(word)
+                else:
+                    if current_line:
+                        lines.append(' '.join(current_line))
+                    current_line = [word]
+            
+            if current_line:
+                lines.append(' '.join(current_line))
         
-        if current_line:
-            lines.append(' '.join(current_line))
-        
-        # 전체 텍스트 높이 계산 (폰트 크기에 비례)
-        line_height = int(font_size * 1.5)  # (font_size + 8) -> font_size * 1.5
-        caption_height = len(lines) * line_height + 2 * padding
+        # 전체 텍스트 높이 계산 (더 넉넉하게)
+        bbox = temp_draw.textbbox((0, 0), "Ay", font=font)  # 실제 폰트 높이 측정
+        actual_font_height = bbox[3] - bbox[1]
+        line_height = int(actual_font_height * 1.4)  # 줄 간격 1.4배
+        caption_height = len(lines) * line_height + 2 * padding + int(padding * 0.5)  # 위아래 여유 공간
     
     # 새 이미지 생성 (헤더 + 원본 + 캡션 + 테두리)
     total_width = img_width + 2 * border_width
@@ -159,8 +181,16 @@ def add_caption_to_image(
             
             draw.text((text_x, text_y), line, fill=text_color, font=font)
     
-    # 저장
+    # 저장 (UTF-8 인코딩 보장)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    new_img.save(output_path, quality=95)
+    
+    # Windows에서 한글 경로 처리
+    import sys
+    if sys.platform == 'win32':
+        # Windows에서는 문자열로 변환하여 저장
+        output_str = str(output_path)
+        new_img.save(output_str, quality=95, optimize=True)
+    else:
+        new_img.save(output_path, quality=95, optimize=True)
     
     return output_path

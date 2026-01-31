@@ -84,12 +84,12 @@ class SaveSelectedFramesThread(QThread):
                 from PIL import Image
                 import math
                 
-                # 품질 레벨에 따른 설정
+                # 품질 레벨에 따른 설정 (해상도 2배 증가!)
                 quality_settings = {
-                    0: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 95},  # 최고
-                    1: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 90},  # 고품질 (권장)
-                    2: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 85},  # 중간
-                    3: {"dpi": 100, "width": 827, "height": 1169, "jpeg_quality": 75},   # 낮음
+                    0: {"dpi": 400, "width": 3300, "height": 4677, "jpeg_quality": 95},  # 최고
+                    1: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 92},  # 고품질 (권장) - 2배!
+                    2: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 88},  # 중간
+                    3: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 80},  # 낮음
                 }
                 
                 settings = quality_settings.get(self.quality_level, quality_settings[1])
@@ -98,10 +98,10 @@ class SaveSelectedFramesThread(QThread):
                 PDF_DPI = settings["dpi"]
                 JPEG_QUALITY = settings["jpeg_quality"]
                 
-                # 그리드 설정
+                # 그리드 설정 (여백 최소화)
                 COLUMNS = 5  # 가로 5장
-                PAGE_MARGIN = int(60 * (PDF_WIDTH / 2480))  # 해상도에 비례
-                CELL_SPACING = int(30 * (PDF_WIDTH / 2480))  # 해상도에 비례
+                PAGE_MARGIN = int(30 * (PDF_WIDTH / 2480))  # 60 -> 30 (여백 절반으로)
+                CELL_SPACING = int(15 * (PDF_WIDTH / 2480))  # 30 -> 15 (간격 절반으로)
                 
                 # 임시 이미지 리스트
                 temp_images = []
@@ -110,7 +110,7 @@ class SaveSelectedFramesThread(QThread):
                 # 선택된 프레임만 추출
                 selected_frames = [f for f in self.frames if f.selected]
                 
-                # 각 프레임 이미지 생성 (캡션 포함)
+                # 1단계: 각 프레임 이미지 생성 (캡션 포함)
                 for i, frame in enumerate(selected_frames):
                     sequence_number = i + 1
                     
@@ -142,7 +142,26 @@ class SaveSelectedFramesThread(QThread):
                     temp_images.append(temp_path)
                     saved_count += 1
                     
-                    progress = int((i + 1) / len(selected_frames) * 70)
+                    progress = int((i + 1) / len(selected_frames) * 50)
+                    self.progress_updated.emit(progress)
+                
+                # 2단계: 모든 이미지를 최대 높이로 통일
+                if frame_images:
+                    max_width = max(img.width for img in frame_images)
+                    max_height = max(img.height for img in frame_images)
+                    
+                    normalized_images = []
+                    for img in frame_images:
+                        # 새 캔버스 생성 (최대 크기)
+                        canvas = Image.new('RGB', (max_width, max_height), 'white')
+                        # 이미지를 상단 중앙에 배치
+                        x_offset = (max_width - img.width) // 2
+                        canvas.paste(img, (x_offset, 0))
+                        normalized_images.append(canvas)
+                    
+                    frame_images = normalized_images
+                    
+                    progress = 60
                     self.progress_updated.emit(progress)
                 
                 # 그리드 PDF 생성
@@ -202,11 +221,14 @@ class SaveSelectedFramesThread(QThread):
                         progress = 70 + int((page_num + 1) / total_pages * 20)
                         self.progress_updated.emit(progress)
                     
-                    # PDF 저장 (품질 설정 적용, 파일명은 영상명)
+                    # PDF 저장 (품질 설정 적용, 파일명은 영상명, UTF-8 인코딩)
                     pdf_path = self.output_dir / f"{self.video_name}.pdf"
                     if pdf_pages:
+                        import sys
+                        # Windows에서 한글 경로 처리
+                        save_path = str(pdf_path) if sys.platform == 'win32' else pdf_path
                         pdf_pages[0].save(
-                            pdf_path,
+                            save_path,
                             save_all=True,
                             append_images=pdf_pages[1:] if len(pdf_pages) > 1 else [],
                             resolution=float(PDF_DPI),
@@ -227,12 +249,12 @@ class SaveSelectedFramesThread(QThread):
                 from PIL import Image
                 import math
                 
-                # 품질 레벨에 따른 설정
+                # 품질 레벨에 따른 설정 (해상도 2배 증가!)
                 quality_settings = {
-                    0: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 95},
-                    1: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 90},
-                    2: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 85},
-                    3: {"dpi": 100, "width": 827, "height": 1169, "jpeg_quality": 75},
+                    0: {"dpi": 400, "width": 3300, "height": 4677, "jpeg_quality": 95},  # 최고
+                    1: {"dpi": 300, "width": 2480, "height": 3508, "jpeg_quality": 92},  # 고품질 (권장) - 2배!
+                    2: {"dpi": 200, "width": 1654, "height": 2339, "jpeg_quality": 88},  # 중간
+                    3: {"dpi": 150, "width": 1240, "height": 1754, "jpeg_quality": 80},  # 낮음
                 }
                 
                 settings = quality_settings.get(self.quality_level, quality_settings[1])
@@ -240,10 +262,10 @@ class SaveSelectedFramesThread(QThread):
                 IMG_HEIGHT = settings["height"]
                 JPEG_QUALITY = settings["jpeg_quality"]
                 
-                # 그리드 설정
+                # 그리드 설정 (여백 최소화)
                 COLUMNS = 5
-                PAGE_MARGIN = int(60 * (IMG_WIDTH / 2480))
-                CELL_SPACING = int(30 * (IMG_WIDTH / 2480))
+                PAGE_MARGIN = int(30 * (IMG_WIDTH / 2480))  # 60 -> 30 (여백 절반으로)
+                CELL_SPACING = int(15 * (IMG_WIDTH / 2480))  # 30 -> 15 (간격 절반으로)
                 
                 # 임시 이미지 리스트
                 temp_images = []
@@ -252,7 +274,7 @@ class SaveSelectedFramesThread(QThread):
                 # 선택된 프레임만 추출
                 selected_frames = [f for f in self.frames if f.selected]
                 
-                # 각 프레임 이미지 생성 (캡션 포함)
+                # 1단계: 각 프레임 이미지 생성 (캡션 포함)
                 for i, frame in enumerate(selected_frames):
                     sequence_number = i + 1
                     
@@ -284,7 +306,26 @@ class SaveSelectedFramesThread(QThread):
                     temp_images.append(temp_path)
                     saved_count += 1
                     
-                    progress = int((i + 1) / len(selected_frames) * 70)
+                    progress = int((i + 1) / len(selected_frames) * 50)
+                    self.progress_updated.emit(progress)
+                
+                # 2단계: 모든 이미지를 최대 높이로 통일
+                if frame_images:
+                    max_width = max(img.width for img in frame_images)
+                    max_height = max(img.height for img in frame_images)
+                    
+                    normalized_images = []
+                    for img in frame_images:
+                        # 새 캔버스 생성 (최대 크기)
+                        canvas = Image.new('RGB', (max_width, max_height), 'white')
+                        # 이미지를 상단 중앙에 배치
+                        x_offset = (max_width - img.width) // 2
+                        canvas.paste(img, (x_offset, 0))
+                        normalized_images.append(canvas)
+                    
+                    frame_images = normalized_images
+                    
+                    progress = 60
                     self.progress_updated.emit(progress)
                 
                 # 그리드 이미지 생성
@@ -332,13 +373,16 @@ class SaveSelectedFramesThread(QThread):
                             y_offset = (cell_height - img_resized.height) // 2
                             page.paste(img_resized, (x + x_offset, y + y_offset))
                         
-                        # 페이지 저장
+                        # 페이지 저장 (UTF-8 인코딩)
                         if total_pages == 1:
                             output_path = self.output_dir / f"{self.video_name}.{self.image_format}"
                         else:
                             output_path = self.output_dir / f"{self.video_name}_page{page_num + 1:02d}.{self.image_format}"
                         
-                        page.save(output_path, quality=JPEG_QUALITY, optimize=True)
+                        import sys
+                        # Windows에서 한글 경로 처리
+                        save_path = str(output_path) if sys.platform == 'win32' else output_path
+                        page.save(save_path, quality=JPEG_QUALITY, optimize=True)
                         
                         progress = 70 + int((page_num + 1) / total_pages * 20)
                         self.progress_updated.emit(progress)
@@ -497,6 +541,46 @@ class VideoFrameExtractorQt(QMainWindow):
         self.frame_preview_widget = FramePreviewWidget()
         layout.addWidget(self.frame_preview_widget, stretch=1)
         
+        # 구분선
+        layout.addWidget(self._create_separator())
+        
+        # 출력 설정 (프레임 선택 후)
+        output_settings_group = QGroupBox("📁 출력 설정")
+        output_settings_layout = QHBoxLayout()
+        
+        # 출력 형식 선택
+        format_label = QLabel("출력 형식:")
+        format_label.setMinimumWidth(100)
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["PDF", "PNG", "JPG"])
+        self.format_combo.setCurrentIndex(0)  # PDF 기본
+        self.format_combo.setMinimumWidth(150)
+        
+        output_settings_layout.addWidget(format_label)
+        output_settings_layout.addWidget(self.format_combo)
+        output_settings_layout.addSpacing(20)
+        
+        # 품질 설정
+        quality_label = QLabel("품질:")
+        quality_label.setMinimumWidth(80)
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItems(["최고 품질 (대용량)", "고품질 (권장)", "중간 품질", "낮은 품질 (소용량)"])
+        self.quality_combo.setCurrentIndex(1)  # 고품질 기본
+        self.quality_combo.setMinimumWidth(200)
+        
+        output_settings_layout.addWidget(quality_label)
+        output_settings_layout.addWidget(self.quality_combo)
+        output_settings_layout.addSpacing(20)
+        
+        # 안내 문구
+        format_info = QLabel("💡 모든 형식 가로 5장씩 그리드 배치")
+        format_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
+        output_settings_layout.addWidget(format_info)
+        output_settings_layout.addStretch()
+        
+        output_settings_group.setLayout(output_settings_layout)
+        layout.addWidget(output_settings_group)
+        
         # 하단 버튼
         bottom_layout = QHBoxLayout()
         
@@ -599,38 +683,6 @@ class VideoFrameExtractorQt(QMainWindow):
         interval_layout.addWidget(interval_info)
         interval_layout.addStretch()
         layout.addLayout(interval_layout)
-        
-        # 출력 형식 선택
-        format_layout = QHBoxLayout()
-        format_label = QLabel("출력 형식:")
-        format_label.setMinimumWidth(120)
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["PDF", "PNG", "JPG"])
-        self.format_combo.setCurrentIndex(0)  # PDF 기본
-        format_info = QLabel("(모든 형식 가로 5장씩 그리드 배치)")
-        format_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
-        
-        format_layout.addWidget(format_label)
-        format_layout.addWidget(self.format_combo)
-        format_layout.addWidget(format_info)
-        format_layout.addStretch()
-        layout.addLayout(format_layout)
-        
-        # 품질 설정
-        quality_layout = QHBoxLayout()
-        quality_label = QLabel("품질:")
-        quality_label.setMinimumWidth(120)
-        self.quality_combo = QComboBox()
-        self.quality_combo.addItems(["최고 품질 (대용량)", "고품질 (권장)", "중간 품질", "낮은 품질 (소용량)"])
-        self.quality_combo.setCurrentIndex(1)  # 고품질 기본
-        quality_info = QLabel("(품질이 높을수록 파일 크기 증가)")
-        quality_info.setStyleSheet(INFO_TEXT_LIGHT if self.theme == 'light' else INFO_TEXT_DARK)
-        
-        quality_layout.addWidget(quality_label)
-        quality_layout.addWidget(self.quality_combo)
-        quality_layout.addWidget(quality_info)
-        quality_layout.addStretch()
-        layout.addLayout(quality_layout)
         
         group.setLayout(layout)
         return group
