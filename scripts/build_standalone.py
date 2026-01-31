@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-독립 실행 파일 빌드 (FFmpeg 포함)
-사용자가 아무것도 설치할 필요 없는 완전한 설치 패키지 생성
+Build Standalone Executable with FFmpeg
 """
 import sys
 import subprocess
 import platform
 import shutil
 from pathlib import Path
+import io
+
+# Force UTF-8 output on Windows
+if platform.system() == "Windows":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 APP_NAME = "영상프레임추출기"
