@@ -35,7 +35,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: windows-executable
-        path: dist/영상프레임추출기.exe
+        path: dist/VideoFrameExtractor.exe
     
     # Inno Setup 사용 (선택사항)
     # - name: Build installer

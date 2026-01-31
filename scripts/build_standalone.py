@@ -16,7 +16,8 @@ if platform.system() == "Windows":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
-APP_NAME = "영상프레임추출기"
+APP_NAME = "VideoFrameExtractor"
+APP_NAME_KR = "영상프레임추출기"
 SCRIPT_NAME = "run_gui.py"
 
 
