@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-FFmpeg 바이너리 다운로드 스크립트
-설치 파일에 FFmpeg를 포함시키기 위해 사용
+FFmpeg Binary Download Script
 """
 import sys
 import platform
@@ -10,6 +10,12 @@ import zipfile
 import tarfile
 import shutil
 from pathlib import Path
+import io
+
+# Force UTF-8 output on Windows
+if platform.system() == "Windows":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 def download_ffmpeg():
@@ -22,8 +28,8 @@ def download_ffmpeg():
     ffmpeg_dir = project_root / "ffmpeg_binaries"
     ffmpeg_dir.mkdir(exist_ok=True)
     
-    print(f"🔍 시스템: {system} ({machine})")
-    print(f"📥 FFmpeg 다운로드 중...")
+    print(f"[*] System: {system} ({machine})")
+    print(f"[*] Downloading FFmpeg...")
     
     if system == "Darwin":  # macOS
         download_ffmpeg_macos(ffmpeg_dir, machine)
@@ -32,16 +38,16 @@ def download_ffmpeg():
     elif system == "Linux":
         download_ffmpeg_linux(ffmpeg_dir, machine)
     else:
-        print(f"❌ 지원하지 않는 플랫폼: {system}")
+        print(f"[ERROR] Unsupported platform: {system}")
         return False
     
-    print("✅ FFmpeg 다운로드 완료!")
+    print("[OK] FFmpeg download completed!")
     return True
 
 
 def download_ffmpeg_macos(ffmpeg_dir: Path, machine: str):
     """macOS용 FFmpeg 다운로드"""
-    print("📦 macOS용 FFmpeg 다운로드...")
+    print("[*] Downloading FFmpeg for macOS...")
     
     # FFmpeg static build from https://evermeet.cx/ffmpeg/
     if machine == "arm64":
@@ -78,7 +84,7 @@ def download_ffmpeg_macos(ffmpeg_dir: Path, machine: str):
 
 def download_ffmpeg_windows(ffmpeg_dir: Path, machine: str):
     """Windows용 FFmpeg 다운로드"""
-    print("📦 Windows용 FFmpeg 다운로드...")
+    print("[*] Downloading FFmpeg for Windows...")
     
     # FFmpeg static build from https://github.com/BtbN/FFmpeg-Builds/releases
     url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -110,7 +116,7 @@ def download_ffmpeg_windows(ffmpeg_dir: Path, machine: str):
 
 def download_ffmpeg_linux(ffmpeg_dir: Path, machine: str):
     """Linux용 FFmpeg 다운로드"""
-    print("📦 Linux용 FFmpeg 다운로드...")
+    print("[*] Downloading FFmpeg for Linux...")
     
     # FFmpeg static build
     if machine == "x86_64":
@@ -159,12 +165,12 @@ def verify_ffmpeg():
     ffprobe_path = ffmpeg_dir / f"ffprobe{exe_ext}"
     
     if ffmpeg_path.exists() and ffprobe_path.exists():
-        print(f"\n✅ FFmpeg 바이너리 준비 완료:")
+        print(f"\n[OK] FFmpeg binaries ready:")
         print(f"   - ffmpeg: {ffmpeg_path}")
         print(f"   - ffprobe: {ffprobe_path}")
         return True
     else:
-        print(f"\n❌ FFmpeg 바이너리를 찾을 수 없습니다")
+        print(f"\n[ERROR] FFmpeg binaries not found")
         return False
 
 
@@ -172,9 +178,9 @@ if __name__ == '__main__':
     try:
         if download_ffmpeg():
             verify_ffmpeg()
-            print("\n📦 이제 build_standalone.py를 실행하세요!")
+            print("\n[*] Now you can run build_standalone.py!")
     except Exception as e:
-        print(f"\n❌ 오류 발생: {e}")
+        print(f"\n[ERROR] Error occurred: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
