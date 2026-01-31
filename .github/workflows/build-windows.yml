@@ -29,7 +29,7 @@ jobs:
       run: python scripts/download_ffmpeg.py
     
     - name: Build Windows executable
-      run: python scripts/build_windows.py
+      run: python scripts/build_standalone.py
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
