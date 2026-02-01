@@ -403,10 +403,12 @@ class SaveSelectedFramesThread(QThread):
 class VideoFrameExtractorQt(QMainWindow):
     """영상 프레임 추출기 GUI (Qt)"""
     
+    VERSION = "v1.2.2"
+    
     def __init__(self, theme='dark'):
         super().__init__()
         
-        self.setWindowTitle("🎬 영상 프레임 추출기")
+        self.setWindowTitle(f"🎬 영상 프레임 추출기 {self.VERSION}")
         self.setMinimumSize(1200, 800)
         
         # Repository 초기화
@@ -438,13 +440,29 @@ class VideoFrameExtractorQt(QMainWindow):
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
         
-        # 타이틀
+        # 타이틀 (버전 포함)
+        title_layout = QHBoxLayout()
+        
+        # 타이틀 - 중앙
         title_label = QLabel("🎬 영상 프레임 추출기")
         title_font = QFont("Helvetica", 28, QFont.Bold)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet(TITLE_LIGHT if self.theme == 'light' else TITLE_DARK)
-        main_layout.addWidget(title_label)
+        
+        # 버전 - 오른쪽 끝
+        version_label = QLabel(self.VERSION)
+        version_font = QFont("Helvetica", 16, QFont.Bold)
+        version_label.setFont(version_font)
+        version_label.setStyleSheet("color: #4CAF50; padding: 5px 15px; background: rgba(76, 175, 80, 0.1); border-radius: 5px;")
+        version_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        title_layout.addStretch()
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+        title_layout.addWidget(version_label)
+        
+        main_layout.addLayout(title_layout)
         
         # 구분선
         main_layout.addWidget(self._create_separator())
