@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QTextEdit, QFileDialog, QMessageBox, QGroupBox, QDoubleSpinBox,
     QSlider, QFrame, QStackedWidget, QScrollArea
 )
-from PySide6.QtCore import Qt, QThread, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl
+from PySide6.QtGui import QFont, QDragEnterEvent, QDropEvent
 
 from src.domain.entities import ExtractionConfig, VideoFrame
 from src.domain.use_cases import ExtractVideoFramesUseCase, GetVideoInfoUseCase
@@ -403,7 +403,7 @@ class SaveSelectedFramesThread(QThread):
 class VideoFrameExtractorQt(QMainWindow):
     """영상 프레임 추출기 GUI (Qt)"""
     
-    VERSION = "v1.2.2"
+    VERSION = "v1.2.3"
     
     def __init__(self, theme='dark'):
         super().__init__()
@@ -424,10 +424,17 @@ class VideoFrameExtractorQt(QMainWindow):
         self.extracted_frames: List[VideoFrame] = []
         self.extraction_thread: Optional[ExtractionThread] = None
         self.save_thread: Optional[SaveSelectedFramesThread] = None
+        self.is_dragging = False  # 드래그 상태 추적
         
         # UI 구성
         self._setup_ui()
         self._apply_styles()
+        
+        # 드래그 앤 드롭 활성화
+        self.setAcceptDrops(True)
+        
+        # 드래그 오버레이 생성
+        self._create_drag_overlay()
         
     def _setup_ui(self):
         """UI 구성"""
@@ -643,13 +650,19 @@ class VideoFrameExtractorQt(QMainWindow):
         group = QGroupBox("📁 파일 선택")
         layout = QVBoxLayout()
         
+        # 드래그 앤 드롭 안내
+        drag_info = QLabel("💡 영상 파일을 여기로 드래그 앤 드롭하거나 버튼을 클릭하세요")
+        drag_info.setStyleSheet("color: #888; font-size: 12px; padding: 5px;")
+        drag_info.setAlignment(Qt.AlignCenter)
+        layout.addWidget(drag_info)
+        
         # 영상 파일
         video_layout = QHBoxLayout()
         video_label = QLabel("영상 파일:")
         video_label.setMinimumWidth(80)
         self.video_path_edit = QLineEdit()
         self.video_path_edit.setReadOnly(True)
-        self.video_path_edit.setPlaceholderText("영상 파일을 선택하세요...")
+        self.video_path_edit.setPlaceholderText("영상 파일을 선택하거나 드래그하세요...")
         video_btn = QPushButton("파일 선택")
         video_btn.clicked.connect(self._select_video_file)
         video_btn.setMinimumWidth(100)
@@ -658,22 +671,6 @@ class VideoFrameExtractorQt(QMainWindow):
         video_layout.addWidget(self.video_path_edit)
         video_layout.addWidget(video_btn)
         layout.addLayout(video_layout)
-        
-        # 출력 폴더
-        output_layout = QHBoxLayout()
-        output_label = QLabel("출력 폴더:")
-        output_label.setMinimumWidth(80)
-        self.output_path_edit = QLineEdit()
-        self.output_path_edit.setReadOnly(True)
-        self.output_path_edit.setPlaceholderText("~/Documents/frames_selected (기본값)")
-        output_btn = QPushButton("폴더 선택")
-        output_btn.clicked.connect(self._select_output_folder)
-        output_btn.setMinimumWidth(100)
-        
-        output_layout.addWidget(output_label)
-        output_layout.addWidget(self.output_path_edit)
-        output_layout.addWidget(output_btn)
-        layout.addLayout(output_layout)
         
         group.setLayout(layout)
         return group
@@ -781,6 +778,45 @@ class VideoFrameExtractorQt(QMainWindow):
                 f"영상 정보를 읽을 수 없습니다.\n\n{str(e)}"
             )
             
+    def _create_drag_overlay(self):
+        """드래그 오버레이 위젯 생성"""
+        self.drag_overlay = QWidget(self)
+        self.drag_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.92);
+                border-radius: 15px;
+            }
+        """)
+        
+        overlay_layout = QVBoxLayout(self.drag_overlay)
+        overlay_layout.setAlignment(Qt.AlignCenter)
+        
+        # 메시지
+        message_label = QLabel("영상 파일을 여기에 놓으세요")
+        message_label.setStyleSheet("""
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+            background: transparent;
+            padding: 30px;
+        """)
+        message_label.setAlignment(Qt.AlignCenter)
+        overlay_layout.addWidget(message_label)
+        
+        # 지원 형식 안내
+        format_label = QLabel("지원 형식: MP4, AVI, MOV, MKV, WMV 등")
+        format_label.setStyleSheet("""
+            font-size: 16px;
+            color: #ccc;
+            background: transparent;
+            padding: 10px;
+        """)
+        format_label.setAlignment(Qt.AlignCenter)
+        overlay_layout.addWidget(format_label)
+        
+        # 초기에는 숨김
+        self.drag_overlay.hide()
+    
     def _update_status(self, message: str):
         """상태 메시지 업데이트"""
         self.status_label.setText(message)
@@ -882,12 +918,21 @@ class VideoFrameExtractorQt(QMainWindow):
         if not selected:
             QMessageBox.warning(self, "경고", "선택된 프레임이 없습니다.")
             return
+        
+        # 저장 폴더 선택 다이얼로그
+        default_dir = str(Path.home() / "Documents")
+        output_folder = QFileDialog.getExistingDirectory(
+            self,
+            "저장 폴더 선택",
+            default_dir,
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+        
+        if not output_folder:
+            # 사용자가 취소를 누른 경우
+            return
             
-        # 출력 폴더 기본값 설정 (사용자 홈 디렉토리 사용)
-        if not self.output_dir:
-            from pathlib import Path
-            home = Path.home()
-            self.output_dir = home / "Documents" / "frames_selected"
+        self.output_dir = Path(output_folder)
             
         # 출력 폴더 생성
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -958,6 +1003,69 @@ class VideoFrameExtractorQt(QMainWindow):
                 subprocess.run(['explorer', str(self.output_dir)])
             else:  # Linux
                 subprocess.run(['xdg-open', str(self.output_dir)])
+    
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        """드래그 이벤트 처리"""
+        if event.mimeData().hasUrls():
+            # 파일이 드래그되면 수락
+            urls = event.mimeData().urls()
+            if urls and len(urls) > 0:
+                file_path = urls[0].toLocalFile()
+                # 비디오 파일 확장자 확인
+                if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg')):
+                    event.acceptProposedAction()
+                    self.is_dragging = True
+                    self._show_drag_overlay()
+    
+    def dragLeaveEvent(self, event):
+        """드래그 영역 벗어남"""
+        self.is_dragging = False
+        self._hide_drag_overlay()
+    
+    def dropEvent(self, event: QDropEvent):
+        """드롭 이벤트 처리"""
+        self.is_dragging = False
+        self._hide_drag_overlay()
+        
+        urls = event.mimeData().urls()
+        if urls and len(urls) > 0:
+            file_path = urls[0].toLocalFile()
+            if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg')):
+                # 파일 경로 설정
+                self.video_path = Path(file_path)
+                self.video_path_edit.setText(str(self.video_path))
+                self._update_status(f"✓ 파일 선택됨: {self.video_path.name}")
+                
+                # 영상 정보 로드
+                self._load_video_info()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "경고",
+                    "지원되지 않는 파일 형식입니다.\n\n지원 형식: MP4, AVI, MOV, MKV, WMV, FLV, WEBM, M4V, MPG, MPEG"
+                )
+    
+    def _show_drag_overlay(self):
+        """드래그 오버레이 표시"""
+        # 오버레이 크기와 위치 설정 (중앙에 배치)
+        overlay_width = 700
+        overlay_height = 350
+        x = (self.width() - overlay_width) // 2
+        y = (self.height() - overlay_height) // 2
+        
+        self.drag_overlay.setGeometry(x, y, overlay_width, overlay_height)
+        self.drag_overlay.show()
+        self.drag_overlay.raise_()  # 최상위로 올리기
+    
+    def _hide_drag_overlay(self):
+        """드래그 오버레이 숨기기"""
+        self.drag_overlay.hide()
+    
+    def resizeEvent(self, event):
+        """창 크기 변경 시 오버레이 위치 재조정"""
+        super().resizeEvent(event)
+        if self.is_dragging and hasattr(self, 'drag_overlay'):
+            self._show_drag_overlay()
 
 
 def main():
