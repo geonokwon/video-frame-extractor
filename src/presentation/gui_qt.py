@@ -73,6 +73,22 @@ class SaveSelectedFramesThread(QThread):
         self.quality_level = quality_level  # 0: 최고, 1: 고품질, 2: 중간, 3: 낮음
         self.video_name = video_name  # 영상 파일명 (확장자 제외)
         
+    def _get_available_basename(self, ext: str, total_pages: int = 1) -> str:
+        """같은 이름이 있으면 (1), (2) ... 붙여서 사용 가능한 basename 반환"""
+        base = self.video_name
+        for n in range(0, 10000):
+            candidate = f"{base} ({n})" if n > 0 else base
+            if total_pages == 1:
+                path = self.output_dir / f"{candidate}.{ext}"
+                if not path.exists():
+                    return candidate
+            else:
+                # 여러 페이지: _page01 존재 여부로 확인 (덮어쓰기 방지)
+                page1_path = self.output_dir / f"{candidate}_page01.{ext}"
+                if not page1_path.exists():
+                    return candidate
+        return f"{base} (9999)"  # fallback
+
     def run(self):
         """스레드 실행"""
         try:
@@ -221,8 +237,9 @@ class SaveSelectedFramesThread(QThread):
                         progress = 70 + int((page_num + 1) / total_pages * 20)
                         self.progress_updated.emit(progress)
                     
-                    # PDF 저장 (품질 설정 적용, 파일명은 영상명, UTF-8 인코딩)
-                    pdf_path = self.output_dir / f"{self.video_name}.pdf"
+                    # PDF 저장 (품질 설정 적용, 파일명은 영상명, 중복 시 (1)(2)... 붙임)
+                    pdf_basename = self._get_available_basename("pdf", total_pages=1)
+                    pdf_path = self.output_dir / f"{pdf_basename}.pdf"
                     if pdf_pages:
                         import sys
                         # Windows에서 한글 경로 처리
@@ -343,6 +360,9 @@ class SaveSelectedFramesThread(QThread):
                     images_per_page = COLUMNS * rows_per_page
                     total_pages = math.ceil(len(frame_images) / images_per_page)
                     
+                    # 중복 방지용 basename (같은 이름 있으면 (1), (2) ...)
+                    img_basename = self._get_available_basename(self.image_format.lower(), total_pages)
+                    
                     # 페이지별로 이미지 생성
                     for page_num in range(total_pages):
                         start_idx = page_num * images_per_page
@@ -373,11 +393,11 @@ class SaveSelectedFramesThread(QThread):
                             y_offset = (cell_height - img_resized.height) // 2
                             page.paste(img_resized, (x + x_offset, y + y_offset))
                         
-                        # 페이지 저장 (UTF-8 인코딩)
+                        # 페이지 저장 (UTF-8 인코딩, 중복 시 basename에 (1)(2)... 적용됨)
                         if total_pages == 1:
-                            output_path = self.output_dir / f"{self.video_name}.{self.image_format}"
+                            output_path = self.output_dir / f"{img_basename}.{self.image_format}"
                         else:
-                            output_path = self.output_dir / f"{self.video_name}_page{page_num + 1:02d}.{self.image_format}"
+                            output_path = self.output_dir / f"{img_basename}_page{page_num + 1:02d}.{self.image_format}"
                         
                         import sys
                         # Windows에서 한글 경로 처리
@@ -403,7 +423,7 @@ class SaveSelectedFramesThread(QThread):
 class VideoFrameExtractorQt(QMainWindow):
     """영상 프레임 추출기 GUI (Qt)"""
     
-    VERSION = "v1.2.3"
+    VERSION = "v1.2.4"
     
     def __init__(self, theme='dark'):
         super().__init__()
